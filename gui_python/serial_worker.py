@@ -255,7 +255,8 @@ class SerialWorker(QThread):
         try:
             raw = ser.readline()            # b"" on timeout
         except Exception as exc:            # noqa: BLE001 - see below
-            # Typical cause: the cable was unplugged. TODO(PY1): reconnect policy.
+            # Typical cause: the cable was unplugged; MainWindow then retries the
+            # connection (MainWindow._on_disconnected()).
             # Deliberately broad: a port that dies mid-read does not only raise
             # SerialException. Observed on a real CP2102 when close() closed the port
             # while this thread was inside readline(): pyserial then calls os.read() with

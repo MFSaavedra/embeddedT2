@@ -8,8 +8,8 @@ Frame format (ASCII, one frame per line), identical to esp32_firmware/main/proto
 - `payload`: comma-separated fields; the first one is the message type ("SMP", "ACK", ...)
 - `XX`: two upper-case hex digits = XOR of every payload byte (between '$' and '*')
 
-Only framing and checksums live here. Message types and their fields are documented in
-README.md ("Protocolo"; the T2 fields are still a DRAFT, TODO.md P1) and interpreted in
+Only framing, checksums and the message type names live here. The fields of each message
+are documented in README.md ("Protocolo"), decoded by messages.py and routed by
 main_window.py. Keep this file and protocol.c in sync.
 """
 from __future__ import annotations

@@ -19,7 +19,7 @@ def main() -> int:
     """
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.resize(1280, 800)
+    window.resize(1440, 900)
     window.show()
     return app.exec_()
 

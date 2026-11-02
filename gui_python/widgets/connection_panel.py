@@ -1,5 +1,10 @@
 """@file connection_panel.py
-@brief Connection panel (T2 spec 4, "Conexión"): port + baud selection, Conectar/Desconectar, Inicializar.
+@brief Connection panel (T2 spec 4, "Conexión"): port + baud selection, Conectar/Desconectar,
+Inicializar, and the state of the link and of the device.
+
+Carried over from Tarea 1, plus a third state besides connected / disconnected: reconnecting,
+while MainWindow retries a link that died without the user asking (cable pulled). The
+connect button then reads "Cancelar reconexión".
 """
 from __future__ import annotations
 
@@ -9,8 +14,8 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                              QPushButton)
 
-## Baud rates offered in the combo box (the higher ones are needed for 3 x 1000 Hz).
-## Must match uart_link_valid_baud() in esp32_firmware/main/uart_link.c, which decides
+## Baud rates offered in the combo box (any of them carries T2's traffic; 921600 is the
+## boot speed). Must match uart_link_valid_baud() in esp32_firmware/main/uart_link.c, which decides
 ## which rates a BAUD command may switch the link to.
 BAUD_RATES = [115200, 230400, 460800, 921600]
 ## Speed the port is always opened at: the board boots into its compile-time LINK_BAUD and
@@ -34,7 +39,7 @@ class ConnectionPanel(QGroupBox):
 
     ## User pressed Conectar: (port, baud).
     connect_requested = pyqtSignal(str, int)
-    ## User pressed Desconectar.
+    ## User pressed Desconectar, or Cancelar reconexión.
     disconnect_requested = pyqtSignal()
     ## User pressed Inicializar ESP32.
     init_requested = pyqtSignal()
@@ -54,6 +59,8 @@ class ConnectionPanel(QGroupBox):
         ## True while a renegotiation is in flight (set_busy()); locks what must not be
         ## touched mid-switch.
         self._busy = False
+        ## True while MainWindow retries a lost link (set_reconnecting()).
+        self._reconnecting = False
 
         ## Serial port selector, filled by set_ports().
         self.port_combo = QComboBox()
@@ -73,8 +80,9 @@ class ConnectionPanel(QGroupBox):
         self.connect_btn = QPushButton("Conectar")
         ## Sends INIT; only enabled while connected.
         self.init_btn = QPushButton("Inicializar ESP32")
-        ## One-line connection status.
+        ## Connection and device status (wraps when long).
         self.status_label = QLabel("Desconectado")
+        self.status_label.setWordWrap(True)
 
         port_row = QHBoxLayout()
         port_row.addWidget(self.port_combo, 1)
@@ -131,6 +139,20 @@ class ConnectionPanel(QGroupBox):
         self._apply_enabled_state()
         self.status_label.setText(text or ("Conectado" if connected else "Desconectado"))
 
+    def set_reconnecting(self, reconnecting: bool, text: Optional[str] = None) -> None:
+        """@brief Show that a lost link is being retried, or stop showing it.
+
+        While reconnecting the port selector is locked (the retries use the port that was
+        open) and the connect button cancels the retries.
+
+        @param reconnecting  True while MainWindow retries.
+        @param text          Status text to show, if any.
+        """
+        self._reconnecting = reconnecting
+        self._apply_enabled_state()
+        if text is not None:
+            self.status_label.setText(text)
+
     def set_busy(self, busy: bool) -> None:
         """@brief Lock the controls that must not be used mid-renegotiation.
 
@@ -146,15 +168,19 @@ class ConnectionPanel(QGroupBox):
     def _apply_enabled_state(self) -> None:
         """@brief Single place that decides which controls are usable.
 
-        Both the connection state and the busy flag feed into it, so neither can silently
-        undo the other - set_connected() used to re-enable what a renegotiation had locked.
+        The connection state, the busy flag and the reconnecting flag all feed into it, so
+        none can silently undo another - set_connected() used to re-enable what a
+        renegotiation had locked.
         """
-        self.connect_btn.setText("Desconectar" if self._connected else "Conectar")
+        if self._connected:
+            self.connect_btn.setText("Desconectar")
+        else:
+            self.connect_btn.setText("Cancelar reconexión" if self._reconnecting else "Conectar")
         self.connect_btn.setEnabled(not self._busy)
         self.init_btn.setEnabled(self._connected and not self._busy)
         self.baud_combo.setEnabled(not self._busy)
         for w in (self.port_combo, self.refresh_btn):
-            w.setEnabled(not self._connected and not self._busy)
+            w.setEnabled(not self._connected and not self._busy and not self._reconnecting)
 
     def target_baud(self) -> int:
         """@brief Speed the user wants the link to run at.
@@ -196,11 +222,11 @@ class ConnectionPanel(QGroupBox):
     def _on_connect_clicked(self) -> None:
         """@brief Emit disconnect_requested or connect_requested depending on the state.
 
-        The requested speed is always DEFAULT_BAUD; see _on_baud_changed() for what the baud
-        selector does instead. Does nothing (beyond a hint in the status label) if no port is
-        selected.
+        Connected or reconnecting, the button disconnects (or cancels the retries). Otherwise
+        it connects, always at DEFAULT_BAUD; see _on_baud_changed() for what the baud selector
+        does instead. Does nothing (beyond a hint in the status label) if no port is selected.
         """
-        if self._connected:
+        if self._connected or self._reconnecting:
             self.disconnect_requested.emit()
             return
         port = self.port_combo.currentData()
