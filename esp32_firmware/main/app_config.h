@@ -39,14 +39,17 @@
  * GPIO21/GPIO22 are the conventional ESP32 DevKit I2C pins: free on the board, not strapping
  * pins (0, 2, 5, 12, 15), not flash pins (6-11) and not input-only (34-39). The wiring table
  * in README.md ("Conexión física") must match these values.
+ *
+ * Verified on the team's module (2026-11-02, ../bme688_test): a real BME688 (chip id 0x61,
+ * variant 0x01) at 0x76, with its own SDA/SCL pull-ups.
  * @{
  */
 #define BME688_I2C_PORT     I2C_NUM_0   /**< I2C controller used for the sensor. */
 #define BME688_SDA_GPIO     21          /**< SDA pin. */
 #define BME688_SCL_GPIO     22          /**< SCL pin. */
 #define BME688_I2C_HZ       100000      /**< SCL clock; the BME688 supports up to 3.4 MHz, 100 kHz is the safe start. */
-#define BME688_ADDR_PRIMARY   0x77      /**< SDO tied to VDDIO (Adafruit default). Probed first. */
-#define BME688_ADDR_SECONDARY 0x76      /**< SDO tied to GND (Pimoroni default). Probed if the first is absent. */
+#define BME688_ADDR_PRIMARY   0x76      /**< SDO tied to GND: the team's module. Probed first. */
+#define BME688_ADDR_SECONDARY 0x77      /**< SDO tied to VDDIO (e.g. Adafruit). Probed if the first is absent. */
 #define BME688_I2C_TIMEOUT_MS 50        /**< Per-transaction timeout. */
 /** @} */
 
@@ -57,7 +60,9 @@
  * @{
  */
 #define SAMPLER_DEFAULT_PERIOD_MS 1000  /**< Spec: 1 Hz suggested initial value. Allowed: 2000, 1000, 500, 200 (0.5/1/2/5 Hz). */
-#define SAMPLER_MIN_PERIOD_MS     200   /**< Fastest allowed rate (5 Hz): one forced-mode T/H/P conversion must fit in it. */
+#define SAMPLER_MIN_PERIOD_MS     200   /**< Fastest allowed rate (5 Hz): one forced-mode T/H/P conversion must fit in
+                                         *   it. Measured 40.3 ms with T x2 / P x16 / H x1 (42.6 ms predicted by
+                                         *   bme68x_get_meas_dur()), so it fits with room to spare. */
 /** @} */
 
 /**

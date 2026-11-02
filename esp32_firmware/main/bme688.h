@@ -3,9 +3,10 @@
  * @brief BME688 temperature / relative humidity / pressure over I2C (spec 2.1).
  *
  * The gas heater is never enabled: the spec leaves gas out, and heating the hot plate would
- * also bias the temperature that the on-device processing works on.
+ * also bias the temperature that the on-device processing works on. Measured on the team's
+ * board: four 100 ms pulses at 300 C raise the temperature reading by about 0.7 C.
  *
- * Scaffold status: bme688_init() brings up the I2C bus, finds the sensor at 0x77 or 0x76 and
+ * Scaffold status: bme688_init() brings up the I2C bus, finds the sensor at 0x76 or 0x77 and
  * checks its chip id, so the wiring can be verified on the very first flash (`idf.py
  * monitor`). bme688_read() is TODO(FW1) and fails until the measurement path exists; the rest
  * of the firmware must treat that like any other read error and never send a value that was

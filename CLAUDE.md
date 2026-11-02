@@ -20,31 +20,41 @@ open questions. README and GUI strings are in Spanish (course deliverable); code
 Doxygen text and `TODO.md` are in English.
 
 **Status: scaffold.** The firmware builds, and the GUI connects, resets the board, INITs and
-renegotiates the baud rate. Still TODO: BME688 measurement, the acquisition task, CFG,
-processing and the T2 GUI panels.
+renegotiates the baud rate. The BME688 is wired and identified on the real board. Still TODO:
+BME688 measurement, the acquisition task, CFG, processing and the T2 GUI panels.
 **Deadline: Fri 6 Nov 2026, 23:59. Graded from an 8–12 min video (60 %) and code review (40 %).**
 
 ## Commands
 
 ### Firmware (`esp32_firmware/`, target `esp32`)
 
-`idf.py` is **not** on PATH; activate it first in every shell. Two installs are in play:
+`idf.py` is **not** on PATH; activate it first in every shell. The team works on two
+machines with different installs (`ls ~/.espressif ~/aur_src` tells which one you are on):
 
 ```bash
-. ~/aur_src/esp-idf/export.sh                 # this machine: ESP-IDF v5.5.5
-# . ~/.espressif/tools/activate_idf_v6.1.sh   # the machine T1 was built on: ESP-IDF v6.1
+. ~/.espressif/tools/activate_idf_v6.1.sh     # machine with the board attached: ESP-IDF v6.1
+# . ~/aur_src/esp-idf/export.sh               # the other machine: ESP-IDF v5.5.5
 cd esp32_firmware
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor          # Ctrl+] exits the monitor
 rm sdkconfig && idf.py reconfigure            # after any change to sdkconfig.defaults
 ```
 
-- The code must build on both v5.5 and v6.1. Use `driver/i2c_master.h`, not the legacy
-  `driver/i2c.h`, and do not depend on the IDF-bundled `json` component.
+- The code must build on both v5.5 and v6.1 (both verified, zero warnings). Use
+  `driver/i2c_master.h`, not the legacy `driver/i2c.h`, and do not depend on the IDF-bundled
+  `json` component.
 - `sdkconfig` is generated and git-ignored; permanent config goes in `sdkconfig.defaults`.
 - The monitor and the GUI cannot share `/dev/ttyUSB0`; close one before opening the other.
-- No board has been attached in this environment yet, so firmware changes can be compiled
-  here but not run.
+- The board (ESP32 DevKit, CP2102, `/dev/ttyUSB0`) and the BME688 are attached to the v6.1
+  machine, so firmware can be flashed and run there. A good boot logs
+  `bme688: BME688 found at 0x76 (chip id 0x61, variant 0x01)`.
+- `idf.py monitor` needs an interactive terminal. From a non-interactive shell, open the port
+  with pyserial at 921600 after the same EN pulse the GUI uses (DTR off, RTS on 100 ms, RTS
+  off). The first read right after `idf.py flash` can come back empty; retry.
+- `../bme688_test` (local to the v6.1 machine, **not in this repo**) is a standalone ESP-IDF
+  bring-up test of the sensor: wiring, chip id, conversion time, T/H/P plausibility, heater.
+  Its `components/bme68x` (Bosch SensorAPI v4.4.8, unmodified) and I2C/delay callbacks are a
+  working starting point for FW1. Its numbers are in `TODO.md` "Measured on the real sensor".
 
 ### GUI and tests (Python 3.8+, PyQt5 + pyserial + pyqtgraph + numpy)
 
@@ -54,10 +64,12 @@ rm sdkconfig && idf.py reconfigure            # after any change to sdkconfig.de
 .venv/bin/python -m pytest tests/test_protocol.py::test_round_trip
 ```
 
-- `.venv/` (git-ignored) was created here with `python3 -m venv --system-site-packages .venv`
-  plus `pip install pyqtgraph`. Elsewhere, use `pip install -r requirements.txt`. The file
+- `.venv/` (git-ignored) exists only on the v5.5 machine, made with
+  `python3 -m venv --system-site-packages .venv` plus `pip install pyqtgraph`. The v6.1
+  machine has Python 3.11 with system PyQt5 but no pyserial, pyqtgraph or pytest, and no
+  `.venv/` yet: create one and `pip install -r requirements.txt pytest`. `requirements.txt`
   lives at the **repo root** (PDF section 8 deliverables), not in `gui_python/` as in T1.
-- A system-wide `dash` pytest plugin prints a deprecation warning on this machine;
+- A system-wide `dash` pytest plugin prints a deprecation warning on the v5.5 machine;
   `-p no:dash` silences it.
 - Tests live in the root `tests/` (the PDF suggests that name), not in `gui_python/tests` as
   in T1:
@@ -110,7 +122,7 @@ Paired constants that must be changed together:
 ### Firmware data flow (`esp32_firmware/main/`)
 
 ```
-app_main: uart_link_init → bme688_init (probe 0x77/0x76 + chip id; failure not fatal)
+app_main: uart_link_init → bme688_init (probe 0x76/0x77 + chip id; failure not fatal)
           → sampler_init → uart_link_start_rx_task(commands_handle_line)
 
 uart_rx task ──line──▶ commands_handle_line ──▶ proto_parse/split ──▶ handle_cfg | handle_init | handle_baud ──▶ ACK/ERR
@@ -126,8 +138,9 @@ acquisition task (TODO FW2) ──▶ bme688_read ──▶ temp_proc (always T)
   (spec 5).
 - `bme688` is not thread-safe. After boot, only the acquisition task may call it, retries
   included (FW6). That is why `handle_init()` does not re-init the sensor from the RX task.
-- `bme688_read()` blocks for the conversion: never call it from an esp_timer callback. A
-  failed read must not produce anything that looks like a measurement (spec 2.1.2).
+- `bme688_read()` blocks for the conversion (40.3 ms measured with T×2 / P×16 / H×1): never
+  call it from an esp_timer callback. A failed read must not produce anything that looks like
+  a measurement (spec 2.1.2).
 - `temp_proc.c` is pure C (no ESP-IDF, no clock, caller-owned state) so the host can test it.
 - UART0 carries both frames and `ESP_LOG`. `uart_vfs_dev_use_driver()` keeps log lines from
   being spliced into frames; never `printf` a `$`-prefixed line outside

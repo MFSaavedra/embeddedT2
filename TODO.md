@@ -16,17 +16,18 @@ average and peaks → robustness. Never assume a command took effect before its 
 ## 0. Setup
 
 - [x] Repo bootstrapped from Tarea 1 (see "Carried over from T1" below)
-- [x] Firmware builds on ESP-IDF v5.5.5 (this machine), zero warnings in `main/`.
-      `bme688_init()` already probes the bus and checks the chip id (written against the IDF
-      v5.5 headers, **not yet run on hardware**); measurement, acquisition task, CFG and
-      processing are stubs
+- [x] Firmware builds on ESP-IDF v5.5.5 (`~/aur_src` machine), zero warnings in `main/`.
+      `bme688_init()` probes the bus and checks the chip id; measurement, acquisition task,
+      CFG and processing are stubs
 - [x] GUI launches; `pytest` passes: protocol in Python **and in C on the host**,
       SerialWorker against a fake port, baud renegotiation, adapted widgets
 - [ ] Teammate added to the private repo:
       `gh api -X PUT repos/MFSaavedra/embeddedT2/collaborators/<github-user>`
-- [ ] Firmware also builds on the T1 machine (ESP-IDF v6.1)
-- [ ] BME688 breakout wired as in README "Conexión física"; the first flash logs
-      `bme688: BME688 found at 0x7?` in `idf.py monitor`
+- [x] Firmware also builds on ESP-IDF v6.1 (the machine with the board), zero warnings
+      (2026-11-02)
+- [x] BME688 breakout wired as in README "Conexión física"; every boot logs
+      `bme688: BME688 found at 0x76 (chip id 0x61, variant 0x01)` (2026-11-02). The local
+      `../bme688_test` bring-up test passes all its checks (see "Measured on the real sensor")
 
 ## 1. Protocol — do this first, both sides depend on it
 
@@ -55,14 +56,23 @@ average and peaks → robustness. Never assume a command took effect before its 
       (github.com/boschsensortec/BME68x_SensorAPI, BSD-3-Clause; the PDF allows it)
   - vendor `bme68x.c/.h`, `bme68x_defs.h` + LICENSE as `esp32_firmware/components/bme68x/`
     with `idf_component_register(SRCS "bme68x.c" INCLUDE_DIRS ".")`, and add `bme68x` to
-    `main/CMakeLists.txt` PRIV_REQUIRES (MINIMAL_BUILD: unlisted components are not built)
-  - glue: read → the existing `read_regs()`; write → one `i2c_master_transmit()` of
-    `[reg, data…]`; delay_us → see trap 6 (FreeRTOS tick)
-  - forced mode, heater **disabled**, oversampling e.g. T×2 / P×16 / H×1 (Bosch's forced-mode
-    example), IIR filter off or small (a filter delays and flattens the peaks FW5 must detect,
-    so justify the choice in README)
-  - wait `bme68x_get_meas_dur()` + margin, then check `BME68X_NEW_DATA_MSK` before trusting the
-    sample; document the measured conversion time (spec 2.1.4: "respetar el tiempo necesario")
+    `main/CMakeLists.txt` PRIV_REQUIRES (MINIMAL_BUILD: unlisted components are not built).
+    On the v6.1 machine, `../bme688_test/components/bme68x` is exactly that (v4.4.8, commit
+    80ea120, unmodified) and is proven on this board: copy it
+  - glue: read → the existing `read_regs()`; write → `[reg, data…]` in one transaction
+    (`i2c_master_multi_buffer_transmit()` avoids a copy; `bme68x_set_regs()` already
+    interleaves reg/data pairs into that buffer); delay_us → see trap 6 (FreeRTOS tick).
+    `../bme688_test/main/main.c` has all three callbacks, working
+  - forced mode, heater **disabled**, oversampling e.g. T×2 / P×16 / H×1 (the setting of
+    Bosch's `bme68x_selftest_check()`; their forced-mode example uses T×2 / P×1 / H×16), IIR
+    filter off or small (a filter delays and flattens the peaks FW5 must detect, so justify the
+    choice in README)
+  - wait `bme68x_get_meas_dur()` (not rounded down), then check `BME68X_NEW_DATA_MSK` before
+    trusting the sample; document the measured conversion time (spec 2.1.4: "respetar el
+    tiempo necesario"). T×2 / P×16 / H×1 measured 40.3 ms against 42.6 ms predicted, so the
+    prediction is already an upper bound. `bme68x_get_data()` re-polls new_data itself (up to
+    5 × 10 ms) before giving up with `BME68X_W_NO_NEW_DATA`, so an early read blocks longer
+    instead of returning stale data
   - float output (Bosch default) gives °C, Pa and %RH: divide pressure by 100 to get hPa
 - [ ] **FW2** Acquisition task (`sampler.c`, see the comment in `sampler_init()`)
   - task priority below `uart_rx` (10), ≥ 4 KB stack, paced by `vTaskDelayUntil()` with the
@@ -207,14 +217,16 @@ Mandatory tests (PDF section 6; procedure + result in README, all shown in the v
 
 1. **A peak is not a threshold crossing** (spec 3.2, "Distinción conceptual"). A steady ramp
    above θ has no local maximum. UT2 must prove that, and the video should say it.
-2. **Sensor noise creates spurious local maxima.** Once T hovers above θ, ±0.01 °C jitter
-   satisfies the minimum rule over and over. The spec allows filtering or a minimum separation
+2. **Sensor noise creates spurious local maxima.** Once T hovers above θ, sample-to-sample
+   jitter (measured 0.02 °C rms at T×2, so swings of ±0.05 °C) satisfies the minimum rule
+   over and over. The spec allows filtering or a minimum separation
    "siempre que la estrategia se explique y pueda verificarse". Options:
    (a) hysteresis: after an event, re-arm only once T < θ − h;
    (b) minimum time between events;
    (c) confirm a candidate maximum only after T has dropped Δ below it (prominence; adds a
    delay of however long the drop takes).
-   (a) or (c), with h or Δ ≈ 0.1–0.2 °C, is simple to explain and to unit-test. Write the
+   (a) or (c), with h or Δ ≈ 0.1–0.2 °C (5–10× the measured noise), is simple to explain and
+   to unit-test. Write the
    choice in README and test it in UT2.
 3. **Hidden T is still acquired.** `vars` gates transmission only (spec 2.2, test MT6).
 4. **Average semantics.** Window `(t − W, t]`; retain 60 s × 5 Hz regardless of the current W
@@ -226,8 +238,12 @@ Mandatory tests (PDF section 6; procedure + result in README, all shown in the v
    tick) and `pdMS_TO_TICKS()` rounds *down*: `vTaskDelay(pdMS_TO_TICKS(43))` waits about
    40 ms, and anything under 10 ms waits 0. A read issued that way lands before the conversion
    ends. Round up (`pdMS_TO_TICKS(x) + 1`), poll the new-data bit, or busy-wait the sub-tick
-   rest with `esp_rom_delay_us()`. The sampling periods themselves are whole ticks.
-7. **Gas heater off.** It is not required, and heating the hot plate would bias T.
+   rest with `esp_rom_delay_us()`. The sampling periods themselves are whole ticks. Real
+   numbers: 42.6 ms predicted, 40.3 ms measured; `vTaskDelay(pdMS_TO_TICKS(42))` is 4 ticks
+   and returns after 30–40 ms, i.e. before the conversion ends.
+7. **Gas heater off.** It is not required, and heating the hot plate biases T: four 100 ms
+   pulses at 300 °C raised the reading by about 0.7 °C, which took ~2 s to fade (measured).
+   README cites this as the reason.
 8. **I²C API.** Use `driver/i2c_master.h` (component `esp_driver_i2c`), which works on v5.5
    and v6.x. The legacy `driver/i2c.h` is deprecated.
 9. **No invented values.** A failed read sends nothing that looks like a measurement. The
@@ -285,9 +301,26 @@ Mandatory tests (PDF section 6; procedure + result in README, all shown in the v
 13. **Keep README in sync.** T1's README still says the Doxygen HTML is git-ignored when it
     was committed.
 
+## Measured on the real sensor (2026-11-02)
+
+From `../bme688_test` (local to the v6.1 machine, not in this repo; same pins, 100 kHz and
+oversampling as this firmware), repeated over several boots with identical results:
+
+| What | Result |
+|---|---|
+| Module | real BME688 (chip id 0x61, variant 0x01) at **0x76** (SDO low), own SDA/SCL pull-ups |
+| `bme68x_init()` (soft reset + calibration) | 17 ms at 100 kHz |
+| Forced conversion, T×2 / P×16 / H×1, IIR off | **40.3 ms** measured (polling new_data), 42.6 ms from `bme68x_get_meas_dur()` |
+| Indoor values at rest | ~24.3 °C, ~54 %RH, ~952 hPa (Santiago; standard-atmosphere altitude ~520 m) |
+| Noise (std dev, 20 back-to-back conversions) | T 0.02 °C, RH 0.01 %RH, P 0.01 hPa |
+| Gas heater 300 °C / 100 ms | first pulse after reset never sets heat_stab (status 0xA0), later ones do (0xB0) |
+| Heater self-heating | +0.7 °C on T after four pulses, gone in ~2 s |
+
 ## Open questions
 
-- [ ] Which BME688 breakout is it: address 0x76 or 0x77, are pull-ups on board, is there a CS pin?
+- [x] Which BME688 breakout is it: address 0x76 or 0x77, are pull-ups on board, is there a CS pin?
+      Answered 2026-11-02: 0x76, pull-ups on the module, I²C works as wired (whether it has a
+      CS pin was not recorded)
 - [ ] W: only {5, 10, 30, 60} (current validation), or any 1–60 s? The spec calls those the
       "valores mínimos requeridos"
 - [ ] Peak strategy and its parameter (trap 2)
@@ -296,12 +329,16 @@ Mandatory tests (PDF section 6; procedure + result in README, all shown in the v
       Suggestion: only on INIT
 - [ ] Video hosting (VID2)
 
-## Environment notes (2026-11-01)
+## Environment notes (2026-11-01, updated 2026-11-02)
 
-- This machine: ESP-IDF **v5.5.5** at `~/aur_src/esp-idf` (AUR), activate with
+The code must build on both machines' IDF versions.
+
+- `~/aur_src` machine: ESP-IDF **v5.5.5** (AUR), activate with
   `. ~/aur_src/esp-idf/export.sh`. Python 3.14 with system PyQt5 5.15.11, numpy 2.5,
   pyserial 3.5 and pytest 9; `.venv/` made with `--system-site-packages`, plus pyqtgraph 0.14.
   T1's firmware builds unchanged on this IDF (checked 2026-11-01)
-- T1 was built with ESP-IDF **v6.1** from the Espressif installer
-  (`. ~/.espressif/tools/activate_idf_v6.1.sh`) on another machine. The code must build on both
+- Machine with the board: ESP-IDF **v6.1** from the Espressif installer
+  (`. ~/.espressif/tools/activate_idf_v6.1.sh`), the version T1 was built with. T2 builds
+  with zero warnings (2026-11-02). Python 3.11 with system PyQt5 5.15.9; no pyserial,
+  pyqtgraph, pytest or `.venv/` yet
 - Board: ESP32 DevKit with a CP2102 bridge, `/dev/ttyUSB0`; the user must be in `dialout`

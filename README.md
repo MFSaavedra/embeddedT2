@@ -58,13 +58,14 @@ Doxyfile                 Documentación del código (Doxygen)
 |---|---|
 | Tarjeta | ESP32 DevKit (target `esp32`, puente USB-serial CP2102) |
 | Sensor | BME688 en módulo con interfaz I²C |
-| Framework firmware | ESP-IDF **v5.5** (probado) o v6.1 |
+| Framework firmware | ESP-IDF v5.5 o v6.1 (ambas probadas) |
 | Python | 3.8+ |
 | Librerías GUI | PyQt5, pyserial, pyqtgraph, numpy (`requirements.txt`) |
 
 ## Conexión física
 
-> Pendiente de confirmar con el módulo que se use (dirección, pull-ups, pin CS).
+Verificado con el módulo del equipo: es un BME688 auténtico (chip id `0x61`, variante `0x01`)
+en la dirección `0x76` (SDO a GND), con resistencias de pull-up propias en SDA y SCL.
 
 | BME688 (módulo) | ESP32 | Notas |
 |---|---|---|
@@ -72,17 +73,17 @@ Doxyfile                 Documentación del código (Doxygen)
 | GND | GND | |
 | SDA | GPIO21 | `BME688_SDA_GPIO` en `app_config.h` |
 | SCL | GPIO22 | `BME688_SCL_GPIO` en `app_config.h` |
-| SDO / ADDR | GND → `0x76` · 3V3 → `0x77` | el firmware prueba `0x77` y luego `0x76` |
+| SDO / ADDR | GND → `0x76` · 3V3 → `0x77` | el firmware prueba `0x76` (el módulo del equipo) y luego `0x77` |
 | CS (si existe) | 3V3 | en alto selecciona I²C |
 
 GPIO21 y GPIO22 son los pines I²C habituales del ESP32 DevKit. Están libres en la placa y no
 son pines de *strapping* (0, 2, 5, 12, 15), de la flash (6–11) ni de solo entrada (34–39). El
-bus funciona a 100 kHz. Los módulos traen resistencias de pull-up, y el firmware habilita
-además las internas del ESP32 como respaldo. Al arrancar, el monitor serial indica si
-encontró el sensor:
+bus funciona a 100 kHz. El módulo trae sus propias resistencias de pull-up, y el firmware
+habilita además las internas del ESP32 como respaldo. Al arrancar, el monitor serial indica
+si encontró el sensor:
 
 ```
-I (…) bme688: BME688 found at 0x77 (chip id 0x61, variant 0x01)
+I (…) bme688: BME688 found at 0x76 (chip id 0x61, variant 0x01)
 ```
 
 ## Compilación y carga del firmware
@@ -245,6 +246,10 @@ ESP32 → PC   $ERR,BADARG,sampling_hz*18
   parezca una medición.
 - **Procesamiento en C puro.** `temp_proc.c` no depende de ESP-IDF, para probarlo en el PC
   con series conocidas.
+- **Calentador de gas apagado.** El enunciado no pide la medición de gas, y el calentador
+  falsea la temperatura: medido con este sensor, cuatro pulsos de 100 ms a 300 °C subieron la
+  lectura de temperatura en unos 0,7 °C, que tardaron ~2 s en disiparse. Eso alteraría el
+  promedio y podría generar picos falsos.
 - _Pendientes:_ driver del BME688 (sobremuestreo, filtro, tiempo de conversión), semántica
   exacta de la ventana del promedio, criterio de picos y su estrategia contra detecciones
   espurias.
@@ -276,5 +281,5 @@ _(pendiente: enlace directo, verificado sin iniciar sesión)_
 | "Conectado" a `/dev/ttyUSB0`, rechazadas subió, pero **Inicializar ESP32** no responde | El chip quedó colgado por una conmutación de DTR/RTS fuera de la GUI (p. ej. al cerrar `idf.py monitor`). **Desconectar** y **Conectar** lo reinicia; si persiste, pulsar el botón **EN** de la placa |
 | "El ESP32 no respondió al cambio de velocidad" | El puente USB-serial no sostiene esa velocidad. Ambos extremos ya volvieron a 921600; pulsar **Inicializar ESP32** |
 | Tras cambiar la velocidad, `idf.py monitor` muestra basura | El monitor sigue a `CONFIG_ESP_CONSOLE_UART_BAUDRATE`; abrirlo con `idf.py monitor -b <baud>` |
-| Monitor: `no sensor at 0x77 or 0x76 (ESP_ERR_NOT_FOUND)` | El sensor no responde: revisar alimentación, SDA/SCL (GPIO21/22) y el pin SDO |
+| Monitor: `no sensor at 0x76 or 0x77 (ESP_ERR_NOT_FOUND)` | El sensor no responde: revisar alimentación, SDA/SCL (GPIO21/22) y el pin SDO |
 | Monitor: `… (ESP_ERR_TIMEOUT)` al buscar el sensor | Bus I²C trabado, normalmente por falta de pull-ups o SDA/SCL invertidos |
