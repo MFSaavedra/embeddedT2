@@ -2,14 +2,16 @@
  * @file app_config.h
  * @brief Compile-time constants and spec defaults for the Tarea 2 firmware.
  *
- * Runtime-configurable values (sampling rate, transmitted variables, average window,
- * peak threshold) live in sampler.c; only their *defaults* and allowed sets are defined
+ * Runtime-configurable values (sampling rate, transmitted variables, average window, peak
+ * threshold) are the fields of sampler_cfg_t; only their *defaults* and limits are defined
  * here. Every default has a twin in the GUI that must be changed with it (see CLAUDE.md,
  * "Paired constants").
+ *
+ * This header includes nothing on purpose: the pure-C modules (sampler_cfg.c, temp_proc.c)
+ * use it and are compiled on the PC by the tests. LINK_UART_NUM and BME688_I2C_PORT expand to
+ * ESP-IDF names, so only the files that include the matching driver header may use them.
  */
 #pragma once
-
-#include "driver/uart.h"
 
 /** Firmware version, reported in the reply to INIT (`ACK,INIT,2.0`) so the GUI can display it. */
 #define FW_VERSION "2.0"
@@ -26,7 +28,7 @@
 #define LINK_RX_BUF_SIZE    1024        /**< Driver RX ring buffer, bytes. */
 #define LINK_TX_BUF_SIZE    4096        /**< Driver TX ring buffer, bytes (frames are copied into it). */
 #define LINK_MAX_LINE       256         /**< Longest accepted command line (PC -> ESP32), bytes. T1 used 128;
-                                         *   a key=value CFG with every field is already ~100 bytes. */
+                                         *   a CFG with every field is already ~100 bytes. */
 #define LINK_MAX_FRAME      512         /**< Longest frame we build (ESP32 -> PC), incl. '$', checksum and newline. */
 #define LINK_BAUD_REVERT_MS 5000        /**< After a BAUD switch, revert to LINK_BAUD unless a valid frame
                                          *   arrives within this time: a rate the PC cannot actually drive
@@ -56,13 +58,15 @@
 /**
  * @name Acquisition (spec 2.1)
  * Rates are handled as periods in ms internally: every period is a whole number of 10 ms
- * FreeRTOS ticks (CONFIG_FREERTOS_HZ = 100), so vTaskDelayUntil() keeps them exact.
+ * FreeRTOS ticks (CONFIG_FREERTOS_HZ = 100), so xTaskDelayUntil() keeps them exact.
  * @{
  */
 #define SAMPLER_DEFAULT_PERIOD_MS 1000  /**< Spec: 1 Hz suggested initial value. Allowed: 2000, 1000, 500, 200 (0.5/1/2/5 Hz). */
 #define SAMPLER_MIN_PERIOD_MS     200   /**< Fastest allowed rate (5 Hz): one forced-mode T/H/P conversion must fit in
                                          *   it. Measured 40.3 ms with T x2 / P x16 / H x1 (42.6 ms predicted by
                                          *   bme68x_get_meas_dur()), so it fits with room to spare. */
+#define SAMPLER_TASK_PRIORITY     5     /**< Acquisition task priority: below uart_rx (10), so commands are never starved. */
+#define SAMPLER_TASK_STACK        4096  /**< Acquisition task stack, bytes (snprintf of floats needs ~1.5 KB). */
 /** @} */
 
 /**
@@ -76,4 +80,8 @@
 #define PEAK_DEFAULT_THRESHOLD_DC 280   /**< Spec: 28.0 C suggested initial value, in tenths of a degree (0.1 C resolution). */
 #define PEAK_MIN_THRESHOLD_DC   (-400)  /**< -40.0 C: bottom of the BME688 operating range. */
 #define PEAK_MAX_THRESHOLD_DC   850     /**< 85.0 C: top of the BME688 operating range. */
+#define PEAK_HYSTERESIS_C       0.2f    /**< Peak detector hysteresis, C: a maximum is confirmed once T has fallen
+                                         *   this much below it, and the next one is searched for once T has risen
+                                         *   this much above the minimum in between (temp_proc.h). Ten times the
+                                         *   sensor noise measured at rest (0.02 C rms), so noise makes no peaks. */
 /** @} */

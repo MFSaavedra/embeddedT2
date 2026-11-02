@@ -2,8 +2,7 @@
  * @file commands.h
  * @brief Interpretation of GUI -> ESP32 commands.
  *
- * Command set (final definition in README.md "Protocolo"; the CFG fields are still a DRAFT,
- * TODO.md P1):
+ * Command set (README.md "Protocolo"):
  *
  *     $CFG,sampling_hz=<0.5|1|2|5>,variables=<T|H|P|TH|TP|HP|THP>,avg_enabled=<0|1>,
  *          window_s=<5|10|30|60>,peak_enabled=<0|1>,threshold_c=<-40.0..85.0>*XX
@@ -11,13 +10,14 @@
  *     $BAUD,<115200|230400|460800|921600>*XX
  *
  * - CFG replaces the whole runtime configuration atomically (sampler_set_config()) and is
- *   answered with the configuration actually applied. TODO(FW3): answered ERR,NOTIMPL for now.
+ *   answered with the configuration actually applied: `ACK,CFG,sampling_hz=..,...`.
  * - INIT restores the defaults, replies with the firmware version and (re)starts acquisition.
  * - BAUD changes the speed of the link itself, stopping the acquisition that INIT restarts
  *   (carried over from Tarea 1).
  *
  * Every command is answered with an ACK frame (`ACK,INIT,2.0`, `ACK,BAUD,230400`, ...) or an
- * ERR frame with a reason code: BADFRAME, EMPTY, UNKNOWN, BADARG or NOTIMPL.
+ * ERR frame with a reason code: BADFRAME, EMPTY, UNKNOWN or BADARG (`ERR,BADARG,window_s`
+ * for a CFG names the first invalid field).
  */
 #pragma once
 

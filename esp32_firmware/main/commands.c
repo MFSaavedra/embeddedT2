@@ -4,7 +4,8 @@
  *
  * The dispatcher, send_err(), strict field parsing and BAUD come from Tarea 1 unchanged. T1's
  * send_ack() is gone: every T2 acknowledgement carries data (version, rate, applied config),
- * so each handler builds its own ACK payload.
+ * so each handler builds its own ACK payload. The CFG fields themselves are parsed by
+ * sampler_cfg.c, which the tests run on the PC.
  * See commands.h for the command set and README.md "Protocolo" for the frame definitions.
  */
 #include "commands.h"
@@ -29,7 +30,8 @@ static const char *TAG = "commands";
 
 /**
  * @brief Send an error frame: "ERR," followed by @p why.
- * @param[in] why  Short reason code: "BADFRAME", "EMPTY", "UNKNOWN", "BADARG" or "NOTIMPL".
+ * @param[in] why  Reason code: "BADFRAME", "EMPTY", "UNKNOWN" or "BADARG", the last one
+ *                 optionally followed by the offending CFG key ("BADARG,window_s").
  */
 static void send_err(const char *why)
 {
@@ -62,25 +64,35 @@ static bool parse_field(const char *s, long lo, long hi, long *out)
 }
 
 /**
- * @brief Handle a CFG command: replace the whole runtime configuration. TODO(FW3).
+ * @brief Handle a CFG command: replace the whole runtime configuration.
  *
  *     CFG,sampling_hz=..,variables=..,avg_enabled=..,window_s=..,peak_enabled=..,threshold_c=..
  *
- * To do: require all six keys, each exactly once, in strict formats (an exact table for
- * sampling_hz, letters T/H/P without repeats for variables, parse_field() for the integers,
- * exactly one decimal for threshold_c, converted to tenths without going through float);
- * build a sampler_cfg_t and apply it with sampler_set_config(); reply ACK,CFG followed by
- * the applied configuration in the same key=value form. Any failure replies ERR,BADARG
- * (naming the offending key is a cheap help for the GUI) and changes nothing.
+ * sampler_cfg_parse() checks all six fields before anything is applied, so an invalid command
+ * changes nothing (spec 5). Replies `ACK,CFG,` followed by the configuration now in force, in
+ * the same key=value form, or `ERR,BADARG,<key>` naming the first invalid field ("fields" if
+ * there are not exactly six).
  *
  * @param fields  Payload fields as split by proto_split(); fields[0] is "CFG".
  * @param n       Number of entries in @p fields.
  */
 static void handle_cfg(char *fields[], int n)
 {
-    (void)fields;
-    (void)n;
-    send_err("NOTIMPL");
+    sampler_cfg_t cfg;
+    const char *bad_key = NULL;
+    if (!sampler_cfg_parse(&fields[1], n - 1, &cfg, &bad_key)) {
+        char why[32];
+        snprintf(why, sizeof why, "BADARG,%s", bad_key);
+        send_err(why);
+        return;
+    }
+    sampler_set_config(&cfg);           /* cannot fail: every field was just validated */
+
+    char payload[LINK_MAX_FRAME];
+    const sampler_cfg_t applied = sampler_get_config();
+    int len = snprintf(payload, sizeof payload, "ACK,CFG,");
+    sampler_cfg_format(&applied, payload + len, sizeof payload - (size_t)len);
+    uart_link_send_frame(payload);
 }
 
 /**
@@ -137,7 +149,7 @@ static void handle_baud(char *fields[], int n)
  *
  * The sensor is deliberately not re-initialised from here: this runs in the RX task, and
  * after boot only the acquisition task may touch the BME688 (bme688.h); retrying a missing
- * sensor is its job (TODO(FW6)).
+ * sensor is its job (sampler.c, read_sensor()).
  *
  * @param fields  Unused.
  * @param n       Unused.

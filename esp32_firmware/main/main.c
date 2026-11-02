@@ -10,9 +10,10 @@
  * - uart_link.c  - UART0 driver, frame TX, line-oriented RX task, runtime baud change (from T1)
  * - protocol.c   - "$payload*XX" framing + XOR checksum, mirrored by gui_python/protocol.py (from T1)
  * - commands.c   - parses GUI commands (CFG / INIT / BAUD) and applies them
- * - bme688.c     - I2C bus and BME688 driver (T/H/P, gas heater off)
- * - sampler.c    - atomic runtime configuration and the acquisition task (SMP / PEAK frames)
- * - temp_proc.c  - moving average + peak detector, pure C so it is unit-tested on the host
+ * - bme688.c     - I2C bus and BME688 driver on the Bosch BME68x SensorAPI (T/H/P, gas heater off)
+ * - sampler.c    - the acquisition task (SMP / PEAK frames) and the live configuration
+ * - sampler_cfg.c - the configuration: defaults, validation, CFG text form (pure C, tested on the PC)
+ * - temp_proc.c  - moving average + peak detector (pure C, tested on the PC)
  * - app_config.h - spec defaults, I2C pins and compile-time constants
  */
 #include "app_config.h"
@@ -31,9 +32,10 @@ static const char *TAG = "main";
  * @brief Application entry point: bring up every module and start listening for commands.
  *
  * A missing sensor is not fatal: commands are still answered, and the acquisition reports the
- * fault instead of sending values (TODO(FW6)). Acquisition does NOT start here: it starts when
- * the GUI sends INIT (commands_handle_line() -> handle_init()). Returns after setup; the
- * FreeRTOS tasks created by the modules keep running.
+ * fault in its SMP frames instead of sending values, and keeps retrying (sampler.c).
+ * Acquisition does NOT start here: it starts when the GUI sends INIT
+ * (commands_handle_line() -> handle_init()). Returns after setup; the FreeRTOS tasks created
+ * by the modules keep running.
  */
 void app_main(void)
 {
@@ -42,7 +44,7 @@ void app_main(void)
     esp_err_t err = bme688_init();
     if (err != ESP_OK) {
         /* Only idf.py monitor sees this: the GUI resets the board on connect and discards the
-         * boot output, so it must learn about the fault from the acquisition (TODO(FW6)). */
+         * boot output, so it learns about the fault from the acquisition (error=no_sensor). */
         ESP_LOGE(TAG, "BME688 not available: %s", esp_err_to_name(err));
     }
 
