@@ -5,8 +5,11 @@ the demo video (file or link). Grading: **code review 40 % (2.4 pts) + demo vide
 (3.6 pts)**, scale 1.0–7.0 (base 1.0 + up to 6.0). There is **no live demo**: grading is done
 from the 8–12 min video, so every point has to be *visible* in it. Build for the recording.
 
-Item IDs (`P1`, `FW2`, `PY4`, `UT1`, `MT3`, …) match the `TODO(<id>)` comments in the code:
-`grep -rn "TODO(" esp32_firmware/main gui_python tests` lists exactly what is left.
+Item IDs (`P1`, `FW2`, `PY4`, `UT1`, `MT3`, …) used to match `TODO(<id>)` comments in the
+code. **Status 2026-11-02: every code item is done and verified on the real board, and the demo
+video is in the repo (`video_demostracion.mp4`); no `TODO(` marker is left.** What remains:
+the teammate's repo access, the v5.5 build check, and optionally the Doxygen HTML (DOC2) and a
+short phone clip of the wiring for the video (the PC that recorded it has no camera).
 
 Recommended order (PDF section 9): I²C + valid readings → serial → GUI → reconfiguration →
 average and peaks → robustness. Never assume a command took effect before its ACK arrives.
@@ -25,155 +28,116 @@ average and peaks → robustness. Never assume a command took effect before its 
       `gh api -X PUT repos/MFSaavedra/embeddedT2/collaborators/<github-user>`
 - [x] Firmware also builds on ESP-IDF v6.1 (the machine with the board), zero warnings
       (2026-11-02)
+- [ ] Re-check the **final** firmware on ESP-IDF v5.5 (`~/aur_src` machine): only v6.1 is
+      installed where the T2 code was written. It uses no API newer than v5.5 (plain
+      `i2c_master_transmit()`, not the multi-buffer call), but that is unverified
 - [x] BME688 breakout wired as in README "Conexión física"; every boot logs
       `bme688: BME688 found at 0x76 (chip id 0x61, variant 0x01)` (2026-11-02). The local
       `../bme688_test` bring-up test passes all its checks (see "Measured on the real sensor")
 
-## 1. Protocol — do this first, both sides depend on it
+## 1. Protocol
 
-- [ ] **P1** Confirm the framing. Recommendation: **keep T1's `$payload*XX`**. It is implemented
-      and tested on both sides (now also as host-compiled C), checksummed, and needs no JSON
-      parser on the ESP32; the PDF explicitly allows "texto delimitado". JSON Lines is only the
-      PDF's *example*. Switching would cost a JSON parser on the ESP32 and a rewrite of
-      `protocol.[ch]`/`protocol.py` and their tests. cJSON is bundled as the `json` component
-      in IDF v5.5 but, as far as we know, moved to the component registry in v6.x, so check
-      that before relying on it
-- [ ] **P1** Freeze the fields of the README DRAFT: CFG (complete, atomic), the ACK,CFG echo,
-      SMP (seq + t_ms + only the selected variables + `temp_avg_c` / `avg_window_complete`),
-      PEAK, error codes. The DRAFT uses key=value fields because the variable set changes per
-      packet and the PDF asks for the average to be "etiquetado como `temp_avg_c`"
-- [ ] **P1** Decide how a sensor fault reaches the GUI. The boot-time `bme688_init()` failure
-      happens while the GUI is still discarding boot output (it resets the board on connect),
-      so the acquisition must report it. DRAFT: `SMP,seq,t_ms,error=<code>` with no values.
-      Keep `ERR` for command replies only, because the GUI aborts a pending baud
-      renegotiation on any ERR
-- [ ] **P1** Update README "Protocolo", both interpreters (`commands.c`,
-      `main_window.py::_on_frame`) and the tests together
+- [x] **P1** Framing: T1's `$payload*XX` kept (implemented and tested on both sides, no JSON
+      parser on the ESP32; the PDF allows "texto delimitado")
+- [x] **P1** Fields frozen in README "Protocolo": `key=value` fields; CFG carries all six keys
+      in a fixed order and is echoed by `ACK,CFG`; SMP = `seq`, `t_ms`, the selected variables,
+      plus `temp_avg_c`, `avg_n`, `avg_window_complete` when the average is on; `PEAK,t_ms,
+      peak_c,threshold_c`; errors `BADFRAME`, `EMPTY`, `UNKNOWN`, `BADARG[,<key>]`
+- [x] **P1** Sensor faults: `SMP,seq,t_ms,error=no_sensor|read_failed`, never `ERR`
+- [x] **P1** README, `sampler_cfg.c` / `commands.c` / `sampler.c`, `messages.py` /
+      `main_window.py` and the tests all agree; `test_messages.py` and `test_sampler_cfg.c`
+      share the CFG literals
 
 ## 2. Firmware — `esp32_firmware/main/`
 
-- [ ] **FW1** BME688 measurement path (`bme688.c`). Recommended: Bosch **BME68x SensorAPI**
-      (github.com/boschsensortec/BME68x_SensorAPI, BSD-3-Clause; the PDF allows it)
-  - vendor `bme68x.c/.h`, `bme68x_defs.h` + LICENSE as `esp32_firmware/components/bme68x/`
-    with `idf_component_register(SRCS "bme68x.c" INCLUDE_DIRS ".")`, and add `bme68x` to
-    `main/CMakeLists.txt` PRIV_REQUIRES (MINIMAL_BUILD: unlisted components are not built).
-    On the v6.1 machine, `../bme688_test/components/bme68x` is exactly that (v4.4.8, commit
-    80ea120, unmodified) and is proven on this board: copy it
-  - glue: read → the existing `read_regs()`; write → `[reg, data…]` in one transaction
-    (`i2c_master_multi_buffer_transmit()` avoids a copy; `bme68x_set_regs()` already
-    interleaves reg/data pairs into that buffer); delay_us → see trap 6 (FreeRTOS tick).
-    `../bme688_test/main/main.c` has all three callbacks, working
-  - forced mode, heater **disabled**, oversampling e.g. T×2 / P×16 / H×1 (the setting of
-    Bosch's `bme68x_selftest_check()`; their forced-mode example uses T×2 / P×1 / H×16), IIR
-    filter off or small (a filter delays and flattens the peaks FW5 must detect, so justify the
-    choice in README)
-  - wait `bme68x_get_meas_dur()` (not rounded down), then check `BME68X_NEW_DATA_MSK` before
-    trusting the sample; document the measured conversion time (spec 2.1.4: "respetar el
-    tiempo necesario"). T×2 / P×16 / H×1 measured 40.3 ms against 42.6 ms predicted, so the
-    prediction is already an upper bound. `bme68x_get_data()` re-polls new_data itself (up to
-    5 × 10 ms) before giving up with `BME68X_W_NO_NEW_DATA`, so an early read blocks longer
-    instead of returning stale data
-  - float output (Bosch default) gives °C, Pa and %RH: divide pressure by 100 to get hPa
-- [ ] **FW2** Acquisition task (`sampler.c`, see the comment in `sampler_init()`)
-  - task priority below `uart_rx` (10), ≥ 4 KB stack, paced by `vTaskDelayUntil()` with the
-    period **re-read every cycle**, so a rate change applies without a restart (spec 2.1.4)
-  - `t_ms = esp_timer_get_time() / 1000` taken at the measurement; `seq` +1 per packet, error
-    packets included (then a seq gap means a lost frame, not a failed read)
-  - T always goes into temp_proc, whatever `vars` says (spec 2.2, "Importante")
-  - SMP with only the selected variables, plus `temp_avg_c` and `avg_window_complete` when the
-    average is enabled; a detected peak goes out as its own PEAK frame
-  - reset temp_proc on INIT; `sampler_stop()` must never leave half a frame queued (BAUD
-    drains the TX buffer right after it)
-- [ ] **FW3** CFG (`commands.c`, see `handle_cfg()`)
-  - all six keys exactly once, strict formats: a table for `sampling_hz`, letters T/H/P without
-    repeats for `variables`, `parse_field()` for the integers, exactly one decimal for
-    `threshold_c` (convert to tenths without going through float)
-  - one `sampler_set_config()`; reply `ACK,CFG,<applied config>`; on failure
-    `ERR,BADARG[,<key>]` and nothing changes
-  - put the field parsing in a pure-C file (no ESP-IDF includes) so UT3 can run it on the host
-  - an empty selection is rejected here **and** prevented in the GUI (spec 2.2: "rechazarse o
-    impedirse")
-- [ ] **FW4** Moving average (`temp_proc.c`), semantics in `temp_proc.h`: window
-      `(t − W, t]`, retention independent of W (a longer W uses samples already held),
-      `window_complete` reported during start-up, computed even while T is hidden
-- [ ] **FW5** Peak detector (`temp_proc.c`): the minimum rule `T[k−1] > T[k−2]`,
-      `T[k−1] ≥ T[k]`, `T[k−1] ≥ θ`, **plus** a spurious-detection strategy (trap 2), one event
-      per peak with value, θ in force and the peak's own timestamp
-- [ ] **FW6** Sensor faults: retry `bme688_init()` from the acquisition task (the sensor's only
-      user after boot), report failed reads with the error form of SMP, recover on its own,
-      never send invented values (spec 2.1.2)
-- [ ] **FW7** (optional) `GET` command that replies with the current configuration
+- [x] **FW1** `bme688.c` on the Bosch SensorAPI (`components/bme68x`, copied from
+      `../bme688_test`): forced mode, T×2 / P×16 / H×1, IIR off, heater disabled; waits
+      `bme68x_get_meas_dur()` (42.6 ms) rounded up to ticks + 1; the API checks new_data;
+      out-of-range values are treated as a failed read. Plain `i2c_master_transmit()` with a
+      21-byte copy in the write callback (no `i2c_master_multi_buffer_transmit()`, whose
+      availability on v5.5 was not checked)
+- [x] **FW2** Acquisition task in `sampler.c`: priority 5, 4 KB stack, `xTaskDelayUntil()`
+      with the period re-read every cycle; `t_ms` at the start of the measurement; `seq` +1
+      per SMP (errors included); T always into temp_proc; one mutex held per cycle, so CFG
+      applies between readings and `sampler_stop()` leaves nothing pending
+- [x] **FW3** CFG: `sampler_cfg.[ch]` (pure C) parses the six fields strictly (rate table,
+      letters without repeats, 0/1 flags, W in {5, 10, 30, 60}, θ with exactly one decimal
+      converted to tenths without float) and formats the echo; `handle_cfg()` replies
+      `ACK,CFG,<config in force>` or `ERR,BADARG,<first bad key>`
+- [x] **FW4** Moving average: window `(t − W, t]`, 320 retained samples whatever W is,
+      complete once `t − t_first ≥ W`, `N_W` sent as `avg_n`
+- [x] **FW5** Peaks: hysteresis h = 0.2 °C (`PEAK_HYSTERESIS_C`, 10× the noise): a maximum is
+      confirmed once T falls h below it, the next rise needs h above the minimum; reported if
+      ≥ θ, with the peak sample's own time. Satisfies the minimum rule; README explains it
+- [x] **FW6** Faults: a failed read or init gives `error=...` SMPs; the acquisition task
+      re-initialises the sensor every cycle until it answers. Verified on the board with two
+      throwaway builds: SDA on an unconnected pin (every SMP `error=no_sensor`, commands still
+      answered) and one read in ten forced to fail (`error=read_failed`, re-init next cycle,
+      no timing drift)
+- [ ] **FW7** (optional, skipped) `GET` command: ACK,CFG already echoes every change
 
 ## 3. GUI — `gui_python/`
 
-- [ ] **PY1** Robustness and reconnection. This was T1's unfinished PY1 and is graded now
-      (0.70 pts, test MT7). Tell a pulled cable apart from the user's Desconectar, refresh the
-      port list, offer or attempt a reconnect. A reconnect resets the board (EN pulse), so the
-      firmware is back on defaults: after `ACK,INIT`, re-send the GUI's configuration with CFG,
-      or visibly reset the panels
-- [ ] **PY2** `_on_frame`: SMP → `ReadingsPanel.update_sample()` + `SensorPlots.push()` per
-      variable present + average display; PEAK → event list. Malformed fields move the frame
-      from the OK counter to the rejected one (T1 rule)
-- [ ] **PY3** Acquisition panel (rate 0.5/1/2/5 Hz; T/H/P checkboxes that cannot all be off)
-      and processing panel (average on/off + W 5/10/30/60; peaks on/off + θ `QDoubleSpinBox`
-      with step 0.1 and one decimal, 28.0 by default). One **Aplicar** button sends a single
-      CFG and the panel stays "pendiente" until the ACK echo arrives; a "Configuración
-      confirmada por el ESP32" block shows that echo (spec 4). On ERR, show the rejection and
-      keep the last confirmed config. Defaults mirror `app_config.h`
-- [ ] **PY4** Reading states: "sin datos" after ~2.5 periods without an SMP, "lectura
-      inválida" for error SMPs, lost-packet count from seq gaps
-- [ ] **PY5** Plots: overlay `temp_avg_c` on the temperature plot, mark PEAK events and draw
-      the θ line (`pg.InfiniteLine`); deselected variables are already marked
-      (`set_transmitted()`)
-- [ ] **PY6** Peak history table: ESP32 time, local time, value, θ applied; current θ visible
-- [ ] **PY7** Manual command box (raw payload, or a raw line without a checksum). The GUI's own
-      controls cannot produce an invalid CFG, but MT7 must show one being rejected
-- [ ] **PY8** (optional) PC-side recomputation of the average from received T samples, labelled
-      "solo validación (PC)" as spec 4 requires; only possible while T is transmitted
+- [x] **PY1** Reconnection: a disconnect the user did not ask for is retried every 1 s
+      ("Cancelar reconexión" stops it); on success the board has rebooted, so the GUI sends
+      INIT and then the configuration confirmed before the loss. A baud change restores it
+      the same way. Verified on the board by closing the port's fd under the reader
+- [x] **PY2** `_on_frame` decodes with `messages.py` before touching any widget; malformed
+      frames and unknown types count as rejected
+- [x] **PY3** `ConfigPanel`: rate, T/H/P (the last ticked box is locked), average + W,
+      peaks + θ (`QDoubleSpinBox`, 0.1 steps, C locale); one Aplicar = one CFG; state
+      pending → confirmed / RECHAZADA; "En el ESP32:" shows the echo
+- [x] **PY4** `ReadingsPanel`: "Lectura válida" / "LECTURA INVÁLIDA (code)" / "SIN DATOS desde
+      hh:mm:ss" (watchdog 2.5 periods), seq, Δt, frames lost from seq gaps
+- [x] **PY5** `SensorPlots`: average curve, θ line (with a legend entry) and peak markers on
+      T, also while T is hidden; gaps > 3 s break the lines
+- [x] **PY6** `PeakPanel`: θ in force + history (ESP32 time, PC time, value, θ), newest first
+- [x] **PY7** `CommandBox`: any payload, framed with a valid checksum (BAUD refused there:
+      the selector runs the ordered renegotiation)
+- [x] **PY8** PC recomputation of the average, labelled "Validación PC (solo verificación)",
+      with N and the difference; on the board it matched the ESP32 within 0.0054 °C over 198
+      averages (values travel with two decimals)
 
 ## 4. Tests
 
 Unit tests (automatic, `pytest`, compiled for the host by `tests/test_firmware_host.py`):
 
-- [ ] **UT1** `tests/firmware/test_temp_proc.c`, average: known series vs a reference mean;
-      window boundary (`t − W` excluded, `t` included); W change reusing retained samples;
-      start-up incomplete window; T hidden makes no difference
-- [ ] **UT2** peaks: clean single peak → 1 event; plateau → 1 event; monotonic ramp above θ →
-      0 events (exceeding θ is not a peak); local max below θ → 0; noise above θ → handled by
-      the chosen strategy
-- [ ] **UT3** CFG parsing (pure-C part of FW3): every invalid form (missing or repeated key,
-      bad rate, empty or unknown variable, two decimals, out of range) is rejected with no
-      partial change
+- [x] **UT1** `tests/firmware/test_temp_proc.c`: average vs. a reference at every step for
+      W = 5/10/30 s, window edges, start-up, W change on retained samples, buffer overflow at
+      5 Hz × 60 s, uint32 clock wrap
+- [x] **UT2** peaks: single, plateau, ramp above θ (0 events), max below θ, noisy plateau (the
+      bare minimum rule fires > 5 times, ours once), two peaks, no rise, θ at confirmation
+- [x] **UT3** `tests/firmware/test_sampler_cfg.c`: round trips, the seven combinations, wrong
+      count / order / key, every bad value of every field, nothing written on failure
 
-Mandatory tests (PDF section 6; procedure + result in README, all shown in the video):
+Mandatory tests (PDF section 6; procedure + result in README, all to be shown in the video):
 
-- [ ] **MT1** Real readings: T, H and P together, with units, wiring and the rate in use
-- [ ] **MT2** Seven combinations: at least 3 on video (one, two and three variables); all 7
-      documented in README (the SMP seen for each)
-- [ ] **MT3** Dynamic rate: 1 Hz → 5 Hz without a restart; periodicity checked from t_ms / seq
-      (the readings panel shows Δt)
-- [ ] **MT4** Average: W 5 s → 30 s; results compared against a reference calculation; shown
-      to be emitted by the ESP32
-- [ ] **MT5** Peaks: set θ near ambient, provoke one local maximum gently (finger, breath, warm
-      air; stay within the sensor specs), verify exactly one event
-- [ ] **MT6** Hidden T: only H and/or P selected, average and peak events still arrive
-- [ ] **MT7** Errors: an invalid configuration (PY7) and a serial disconnect/reconnect (PY1)
+- [x] **MT1** Real readings on the board (README table)
+- [x] **MT2** Seven combinations captured on the board (README)
+- [x] **MT3** 1 Hz → 5 Hz → 0.5 Hz with Δt from t_ms (README)
+- [x] **MT4** W 5 s → 30 s vs. a reference recomputed from the received T (README)
+- [x] **MT5** Unit test (UT2), the PEAK path with a test build (h = 0.02 °C: 14 noise events
+      in 40 s), and the real thing on 2026-11-02: θ = 26.1 °C, a fingertip took T from 25.6 to
+      33.98 °C, one `PEAK,t_ms=38544,peak_c=33.98` 1 s after the maximum, none during the 30+ s
+      cool-down above θ. Repeat it on camera for the video
+- [x] **MT6** Only H / H+P selected: average and peaks keep coming (README)
+- [x] **MT7** Invalid CFGs rejected naming the field; a real USB unplug on 2026-11-02:
+      CONEXIÓN PERDIDA, retries every ~1 s, reconnected 11.5 s later and restored the
+      configuration by itself. Repeat both on camera for the video
 
 ## 5. Docs and video
 
-- [ ] **DOC1** README: installation (ESP32 + PC), wiring and pins, running, exact packet
-      formats, design decisions, screenshots in `docs/screenshots/`, test procedures and
-      results, video link
-- [ ] **DOC2** Regenerate Doxygen (`doxygen` → `docs/doxygen/html`) and commit it once the code
-      settles (T1 committed its HTML)
-- [ ] **VID1** Script the 8–12 min video: wiring close-up → connect → MT1 … MT7 → wrap-up. It
-      needs voice or clear captions, legible GUI text (record at native resolution, enlarge
-      fonts if needed), and the real BME688–ESP32 setup on camera. Cuts are fine; slides or
-      screenshots instead of the running system are not
-- [ ] **VID2** Hosting: T1's video was 18 MB, but 10 minutes will likely exceed GitHub's 100 MB
-      file limit. Upload it (YouTube unlisted, or Drive "anyone with the link"), put the
-      **direct link** in README, and check it opens without logging in. It must stay up until
-      grading ends. A small enough `video_demostracion.mp4` in the repo is also accepted
+- [x] **DOC1** README: installation, wiring, use, protocol, design decisions, screenshots
+      (`docs/screenshots/`, taken from the real GUI on the real board), test results
+- [ ] **DOC2** Doxygen HTML: `doxygen` is not installed on the v6.1 machine. Run `doxygen` on a
+      machine that has it and commit `docs/doxygen/html` (T1 did)
+- [x] **VID1** `video_demostracion.mp4` (8:01 min, 16,2 MB), recorded 2026-11-02: a
+      real-time screen recording of the GUI on the real board with caption banners, covering
+      tests 1-7; the fingertip touches and the USB unplug were done live by a team member.
+      It shows no camera footage of the wiring (no webcam on that PC). The PDF asks for the
+      real BME688-ESP32 setup to be visible: optionally add a short phone clip of the wiring
+- [x] **VID2** Delivered as a file in the repo root (allowed by PDF section 8), under
+      GitHub's 100 MB limit, so no external hosting is needed
 
 ---
 
@@ -272,7 +236,9 @@ Mandatory tests (PDF section 6; procedure + result in README, all shown in the v
 | `env_panel.py` → `widgets/readings_panel.py` | adapted: T/H/P, "no transmitida", seq / ESP32 time / Δt |
 | Tests: protocol, SerialWorker, renegotiation | unchanged apart from strings; moved to root `tests/` |
 | `sdkconfig.defaults`, `.gitignore`, `Doxyfile` | unchanged / renamed |
-| `accel_sim`, `env_sim`, `config_panel` | dropped: simulated data is forbidden in T2. Their patterns (validated atomic config, snapshot getter, start only on INIT) live on in `sampler.c` |
+| `accel_sim`, `env_sim` | dropped: simulated data is forbidden in T2. Their patterns (validated atomic config, snapshot getter, start only on INIT) live on in `sampler.c` |
+| `config_panel.py` | replaced by T2's `ConfigPanel` (one CFG per Aplicar); keeps T1's `_combo()` helper |
+| Measured reuse (README "Reutilización de la Tarea 1") | protocol.c, uart_link.[ch], sdkconfig.defaults 100 %; serial_worker.py 98 %; connection_panel.py 84 %; commands.c 78 %; main_window.py 45 % |
 
 ## Lessons from T1 that apply here
 
@@ -315,19 +281,21 @@ oversampling as this firmware), repeated over several boots with identical resul
 | Noise (std dev, 20 back-to-back conversions) | T 0.02 °C, RH 0.01 %RH, P 0.01 hPa |
 | Gas heater 300 °C / 100 ms | first pulse after reset never sets heat_stab (status 0xA0), later ones do (0xB0) |
 | Heater self-heating | +0.7 °C on T after four pulses, gone in ~2 s |
+| Self-heating from sampling (T2 firmware, heater off) | ~+0.1 °C after 100 s at 5 Hz: too little to provoke a peak (h = 0.2 °C) |
+| `bme688_init()` retry in the acquisition task | ~165 ms (Bosch init + config poll in 10 ms steps); a 5 Hz cycle that re-inits overruns by ~25 ms, and `xTaskDelayUntil()` keeps the schedule |
+| ESP32 average vs. PC reference | ≤ 0.0075 °C over 681 averages (values travel with two decimals) |
 
 ## Open questions
 
 - [x] Which BME688 breakout is it: address 0x76 or 0x77, are pull-ups on board, is there a CS pin?
       Answered 2026-11-02: 0x76, pull-ups on the module, I²C works as wired (whether it has a
       CS pin was not recorded)
-- [ ] W: only {5, 10, 30, 60} (current validation), or any 1–60 s? The spec calls those the
-      "valores mínimos requeridos"
-- [ ] Peak strategy and its parameter (trap 2)
-- [ ] Sensor-fault reporting format (P1)
-- [ ] Reset the retained average samples on a rate change, or on average disable/enable?
-      Suggestion: only on INIT
-- [ ] Video hosting (VID2)
+- [x] W: only {5, 10, 30, 60}, the spec's required values, offered as a combo box
+- [x] Peak strategy: hysteresis 0.2 °C (trap 2, option (c) generalised to both directions)
+- [x] Sensor-fault reporting format: `SMP,...,error=<code>` (P1)
+- [x] Retained average samples are reset only on INIT; rate changes and enable/disable keep
+      them (the window is defined in time, so mixed rates are fine)
+- [x] Video hosting (VID2): file in the repo root
 
 ## Environment notes (2026-11-01, updated 2026-11-02)
 

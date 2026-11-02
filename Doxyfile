@@ -1,7 +1,7 @@
-# Doxygen configuration for Tarea 1 (ESP32 firmware + PyQt GUI).
+# Doxygen configuration for Tarea 2 (ESP32 firmware + PyQt GUI).
 #
 # Run `doxygen` from the repository root; the HTML lands in docs/doxygen/html/index.html
-# (git-ignored). Only settings that differ from the Doxygen defaults are listed here;
+# (committed, as in Tarea 1). Only settings that differ from the Doxygen defaults are listed here;
 # `doxygen -g` writes a fully commented reference file if you need to see the rest.
 
 PROJECT_NAME           = "Tarea 2 CC5328 — BME688 + procesamiento local ESP32"
