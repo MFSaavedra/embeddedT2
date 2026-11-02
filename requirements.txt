@@ -1,0 +1,7 @@
+# Install with:  pip install -r requirements.txt   (Python 3.8+)
+PyQt5>=5.15
+pyserial>=3.5
+pyqtgraph>=0.13
+numpy>=1.24
+# dev only
+pytest>=7

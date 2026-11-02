@@ -1,0 +1,32 @@
+# Doxygen configuration for Tarea 1 (ESP32 firmware + PyQt GUI).
+#
+# Run `doxygen` from the repository root; the HTML lands in docs/doxygen/html/index.html
+# (git-ignored). Only settings that differ from the Doxygen defaults are listed here;
+# `doxygen -g` writes a fully commented reference file if you need to see the rest.
+
+PROJECT_NAME           = "Tarea 2 CC5328 — BME688 + procesamiento local ESP32"
+PROJECT_BRIEF          = "Firmware ESP-IDF + GUI PyQt5"
+OUTPUT_DIRECTORY       = docs/doxygen
+
+# ---- input: firmware (C), GUI (Python) and the README as the main page ----
+INPUT                  = README.md TODO.md esp32_firmware/main gui_python tests
+FILE_PATTERNS          = *.c *.h *.py *.md
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */__pycache__/* */.pytest_cache/*
+USE_MDFILE_AS_MAINPAGE = README.md
+
+# ---- comment parsing ----
+JAVADOC_AUTOBRIEF      = YES    # first sentence is the brief when there is no explicit @brief
+PYTHON_DOCSTRING       = NO     # interpret @brief/@param/@return inside Python docstrings (Doxygen >= 1.9.2)
+
+# ---- what to extract: this is a small project, show the internals too ----
+EXTRACT_STATIC         = YES    # static helpers and module state in the .c files
+EXTRACT_PRIVATE        = YES    # _private Python methods and attributes
+SOURCE_BROWSER         = YES    # link every entity to its highlighted source
+
+# ---- output ----
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+QUIET                  = YES
+WARN_NO_PARAMDOC       = NO     # would demand @return on every Python `-> None` method (not seen as void);
+                                # partial or misnamed @param docs are still flagged by WARN_IF_INCOMPLETE_DOC

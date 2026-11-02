@@ -1,0 +1,17 @@
+# Defaults applied when sdkconfig is (re)generated. Permanent config changes go HERE,
+# not in sdkconfig (which is git-ignored). Regenerate with: rm sdkconfig && idf.py reconfigure
+CONFIG_IDF_TARGET="esp32"
+
+# The console shares UART0 with the data link. Log lines never start with '$', so the GUI
+# parser ignores them; switch to CONFIG_LOG_DEFAULT_LEVEL_NONE=y for the demo if desired.
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# UART0 baud rate for the 2nd-stage bootloader, early app logs and `idf.py monitor` (which
+# follows ESP_CONSOLE_UART_BAUDRATE automatically). Kept equal to LINK_BAUD in
+# main/app_config.h so everything after the ROM bootloader is readable at one speed; the ROM
+# bootloader itself always prints at 115200 and those few lines are rejected by the GUI
+# parser. The baud rate is only configurable with the "custom" console UART choice (same
+# UART0 / GPIO1 / GPIO3 as the default). After editing this file: rm sdkconfig && idf.py reconfigure
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_NUM=0
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=921600
