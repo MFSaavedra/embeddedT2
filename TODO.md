@@ -8,8 +8,7 @@ from the 8–12 min video, so every point has to be *visible* in it. Build for t
 Item IDs (`P1`, `FW2`, `PY4`, `UT1`, `MT3`, …) used to match `TODO(<id>)` comments in the
 code. **Status 2026-11-02: every code item is done and verified on the real board, and the demo
 video is in the repo (`video_demostracion.mp4`); no `TODO(` marker is left.** What remains:
-the teammate's repo access, the v5.5 build check, and optionally the Doxygen HTML (DOC2) and a
-short phone clip of the wiring for the video (the PC that recorded it has no camera).
+the teammate's repo access, the v5.5 build check, and optionally the Doxygen HTML (DOC2).
 
 Recommended order (PDF section 9): I²C + valid readings → serial → GUI → reconfiguration →
 average and peaks → robustness. Never assume a command took effect before its ACK arrives.
@@ -131,11 +130,12 @@ Mandatory tests (PDF section 6; procedure + result in README, all to be shown in
       (`docs/screenshots/`, taken from the real GUI on the real board), test results
 - [ ] **DOC2** Doxygen HTML: `doxygen` is not installed on the v6.1 machine. Run `doxygen` on a
       machine that has it and commit `docs/doxygen/html` (T1 did)
-- [x] **VID1** `video_demostracion.mp4` (8:01 min, 16,2 MB), recorded 2026-11-02: a
-      real-time screen recording of the GUI on the real board with caption banners, covering
-      tests 1-7; the fingertip touches and the USB unplug were done live by a team member.
-      It shows no camera footage of the wiring (no webcam on that PC). The PDF asks for the
-      real BME688-ESP32 setup to be visible: optionally add a short phone clip of the wiring
+- [x] **VID1** `video_demostracion.mp4` (9:13 min, 97.2 MB, looped background music), re-recorded 2026-11-13:
+      a real-time recording of the GUI on the real board with caption banners, covering
+      tests 1-7, plus three phone shots of the physical setup: VID_20261113_165609072.mp4
+      0:00-0:20 at 4:28 and 0:55-end at 5:44 (touching the sensor), and all of
+      VID_20261113_165843273.mp4 at 7:46 (unplugging and replugging the USB cable). Touches
+      and the unplug were done live by a team member. Under GitHub's 100 MiB file limit (7.6 MB to spare)
 - [x] **VID2** Delivered as a file in the repo root (allowed by PDF section 8), under
       GitHub's 100 MB limit, so no external hosting is needed
 

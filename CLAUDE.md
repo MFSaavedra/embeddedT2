@@ -21,8 +21,8 @@ Doxygen text and `TODO.md` are in English.
 
 **Status: complete, verified on the real board (2026-11-02).** Firmware and GUI do everything
 in the PDF; README "Pruebas obligatorias" has the procedures and results, and
-`video_demostracion.mp4` (8 min, captions, recorded from the real GUI on the real board) is the
-demo video. Left: add the teammate to the repo, re-check the build on ESP-IDF v5.5, optionally
+`video_demostracion.mp4` (9:13, captions, looped background music, recorded from the real GUI on the real board,
+with three phone shots of the setup inserted) is the demo video. Left: add the teammate to the repo, re-check the build on ESP-IDF v5.5, optionally
 commit the Doxygen HTML (DOC2; `doxygen` is not installed on the v6.1 machine).
 **Deadline: Fri 6 Nov 2026, 23:59. Graded from an 8–12 min video (60 %) and code review (40 %).**
 

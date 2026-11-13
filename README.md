@@ -463,13 +463,17 @@ la GUI reenvía la configuración → `ACK,CFG,...`, y los datos siguen llegando
 ## Video de demostración
 
 **Archivo: [`video_demostracion.mp4`](video_demostracion.mp4)**, en la raíz del repositorio
-(8:01 min, 16,2 MB).
+(9:13 min, 97,2 MB). Audio: música de fondo en bucle («Title», de Wii Sports); la
+explicación va en los rótulos.
 
-Grabación de pantalla en tiempo real, sin cortes, de la GUI conectada al montaje real (ESP32
-DevKit + BME688). Un rótulo en la parte superior explica cada paso; los avisos naranjos son las
-acciones físicas que un integrante hizo en ese momento sobre el montaje: tocar el sensor con
-un dedo (pruebas 5 y 6) y desconectar y volver a conectar el cable USB (prueba 7). El cursor
-señala, y un recuadro rojo destaca, cada control que se usa.
+Grabación de pantalla en tiempo real de la GUI conectada al montaje real (ESP32 DevKit +
+BME688), con tres tomas de celular intercaladas que muestran el montaje físico: la mano
+tocando el sensor BME688 (pruebas 5 y 6) y desconectando y volviendo a conectar el cable USB del
+ESP32 (prueba 7), con la pantalla reaccionando. Un rótulo en la
+parte superior explica cada paso; los avisos naranjos son las acciones físicas que un
+integrante hizo en ese momento sobre el montaje: tocar el sensor con un dedo (pruebas 5 y 6)
+y desconectar y volver a conectar el cable USB (prueba 7). El cursor señala, y un recuadro rojo
+destaca, cada control que se usa.
 
 | Tiempo | Contenido |
 |---|---|
@@ -477,21 +481,24 @@ señala, y un recuadro rojo destaca, cada control que se usa.
 | 0:13 | Conexión |
 | 0:32 | Prueba 1 · Lecturas reales |
 | 1:07 | Prueba 2 · Siete combinaciones de variables |
-| 1:41 | Prueba 2 · Selección vacía imposible |
+| 1:42 | Prueba 2 · Selección vacía imposible |
 | 2:36 | Prueba 3 · Cambio dinámico de frecuencia |
 | 3:07 | Velocidad del enlace serial |
 | 3:26 | Prueba 4 · Promedio móvil calculado en el ESP32 |
-| 3:58 | Prueba 4 · Cambio de W de 5 s a 30 s |
-| 4:09 | Prueba 5 · Detección de picos en el ESP32 |
-| 4:34 | ↳ evento `PEAK,t_ms=254644,peak_c=29.20,threshold_c=27.0` |
-| 4:37 | Prueba 5 · Un evento por pico |
-| 5:07 | Prueba 6 · Procesamiento con T oculta |
-| 5:39 | ↳ evento `PEAK,t_ms=319444,peak_c=29.07,threshold_c=27.7` |
-| 6:01 | Prueba 7 · Configuración inválida |
-| 6:22 | Prueba 7 · Más comandos inválidos |
-| 7:03 | Prueba 7 · Desconexión |
-| 7:26 | Prueba 7 · Reconexión |
-| 7:46 | Resumen |
+| 4:01 | Prueba 4 · Cambio de W de 5 s a 30 s |
+| 4:12 | Prueba 5 · Detección de picos en el ESP32 |
+| 4:28 | Toma de celular: se toca el sensor BME688 con un dedo (montaje real) y la GUI muestra la subida |
+| 5:01 | ↳ evento `PEAK,t_ms=261644,peak_c=32.93,threshold_c=29.5` |
+| 5:01 | Prueba 5 · Un evento por pico |
+| 5:31 | Prueba 6 · Procesamiento con T oculta |
+| 5:44 | Toma de celular: segunda subida de temperatura y nuevo evento en la pantalla |
+| 6:31 | ↳ evento `PEAK,t_ms=322644,peak_c=34.10,threshold_c=31.5` |
+| 6:52 | Prueba 7 · Configuración inválida |
+| 7:14 | Prueba 7 · Más comandos inválidos |
+| 7:46 | Toma de celular: se desconecta y se vuelve a conectar el cable USB del ESP32; la GUI pierde la conexión y se reconecta |
+| 8:24 | Prueba 7 · Desconexión |
+| 8:37 | Prueba 7 · Reconexión |
+| 8:57 | Resumen |
 
 ## Documentación del código
 
