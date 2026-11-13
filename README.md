@@ -260,7 +260,7 @@ ESP32 → PC   $ERR,BADARG,sampling_hz*18
 
 ## Decisiones de diseño
 
-### Heredadas de la Tarea 1 (siguen vigentes)
+### Siguen vigentes por herencia de la Tarea 1
 
 - **Velocidad del enlace.** El enlace arranca a **921600 baud** en ambos extremos
   (`LINK_BAUD` en el firmware, `DEFAULT_BAUD` en la GUI). En la Tarea 1 era necesario
@@ -392,7 +392,7 @@ ESP32 → PC   $ERR,BADARG,sampling_hz*18
   confirmada, rechazada), el aviso de "sin datos", la reconexión automática con restauración
   de la sesión, y los paneles y gráficos.
 
-## Pruebas obligatorias (sección 6 del enunciado)
+## Pruebas específicas a evaluar desde el enunciado
 
 Hechas con el firmware y la GUI de este repositorio sobre el montaje real (ESP32 DevKit +
 BME688 en `0x76`, GPIO21/22), en interior, el 2 de noviembre de 2026. Las capturas son de la
@@ -463,8 +463,7 @@ la GUI reenvía la configuración → `ACK,CFG,...`, y los datos siguen llegando
 ## Video de demostración
 
 **Archivo: [`video_demostracion.mp4`](video_demostracion.mp4)**, en la raíz del repositorio
-(9:13 min, 97,2 MB). Audio: música de fondo en bucle («Title», de Wii Sports); la
-explicación va en los rótulos.
+(9:13 min, 97,2 MB). La explicación va en los rótulos.
 
 Grabación de pantalla en tiempo real de la GUI conectada al montaje real (ESP32 DevKit +
 BME688), con tres tomas de celular intercaladas que muestran el montaje físico: la mano
